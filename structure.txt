@@ -1,0 +1,45 @@
+.
+├── Collection 1
+│   ├── challenge1b_input.json
+│   ├── challenge1b_output.json
+│   └── PDFs
+│       ├── South of France - Cities.pdf
+│       ├── South of France - Cuisine.pdf
+│       ├── South of France - History.pdf
+│       ├── South of France - Restaurants and Hotels.pdf
+│       ├── South of France - Things to Do.pdf
+│       ├── South of France - Tips and Tricks.pdf
+│       └── South of France - Traditions and Culture.pdf
+├── Collection 2
+│   ├── challenge1b_input.json
+│   ├── challenge1b_output.json
+│   └── PDFs
+│       ├── Learn Acrobat - Create and Convert_1.pdf
+│       ├── Learn Acrobat - Create and Convert_2.pdf
+│       ├── Learn Acrobat - Edit_1.pdf
+│       ├── Learn Acrobat - Edit_2.pdf
+│       ├── Learn Acrobat - Export_1.pdf
+│       ├── Learn Acrobat - Export_2.pdf
+│       ├── Learn Acrobat - Fill and Sign.pdf
+│       ├── Learn Acrobat - Generative AI_1.pdf
+│       ├── Learn Acrobat - Generative AI_2.pdf
+│       ├── Learn Acrobat - Request e-signatures_1.pdf
+│       ├── Learn Acrobat - Request e-signatures_2.pdf
+│       ├── Learn Acrobat - Share_1.pdf
+│       ├── Learn Acrobat - Share_2.pdf
+│       ├── Test Your Acrobat Exporting Skills.pdf
+│       └── The Ultimate PDF Sharing Checklist.pdf
+├── Collection 3
+│   ├── challenge1b_input.json
+│   ├── challenge1b_output.json
+│   └── PDFs
+│       ├── Breakfast Ideas.pdf
+│       ├── Dinner Ideas - Mains_1.pdf
+│       ├── Dinner Ideas - Mains_2.pdf
+│       ├── Dinner Ideas - Mains_3.pdf
+│       ├── Dinner Ideas - Sides_1.pdf
+│       ├── Dinner Ideas - Sides_2.pdf
+│       ├── Dinner Ideas - Sides_3.pdf
+│       ├── Dinner Ideas - Sides_4.pdf
+│       └── Lunch Ideas.pdf
+└── README.md
