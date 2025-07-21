@@ -28,7 +28,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace "*" with frontend URL in production, e.g., ["http://localhost:3000"]
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -201,24 +201,19 @@ async def analyze_pdfs(files: List[UploadFile] = File(...)):
     analysis_id = str(uuid.uuid4())
     results = []
     
-    # Create temporary directory for file processing
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Process each PDF file
         tasks = []
         
         for file in files:
-            # Save uploaded file temporarily
             temp_file_path = os.path.join(temp_dir, file.filename)
             
             with open(temp_file_path, "wb") as buffer:
                 content = await file.read()
                 buffer.write(content)
             
-            # Create task for processing this file
             task = process_single_pdf(temp_file_path, file.filename)
             tasks.append(task)
         
-        # Process all PDFs concurrently
         try:
             pdf_summaries = await asyncio.gather(*tasks, return_exceptions=True)
             

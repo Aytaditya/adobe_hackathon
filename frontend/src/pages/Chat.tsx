@@ -1,8 +1,7 @@
-
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { FileText, Send, FileIcon, ArrowLeft, Clock, Hash } from 'lucide-react'
+import { FileText, Send, FileIcon, ArrowLeft, Clock, Hash, User } from 'lucide-react'
 
 interface FileData {
   name: string
@@ -34,6 +33,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const [messages, setMessages] = useState<Array<{ id: string; role: string; content: string }>>([])
   const [input, setInput] = useState("")
+  const [persona, setPersona] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [sidebarTab, setSidebarTab] = useState("sources")
   const [files, setFiles] = useState<FileData[]>([])
@@ -68,6 +68,11 @@ export default function ChatPage() {
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
+  }
+
+  // Handle persona change
+  const handlePersonaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPersona(e.target.value)
   }
 
   // Handle chat submission
@@ -204,6 +209,21 @@ export default function ChatPage() {
 
           {/* Input Area */}
           <div className="border-t border-gray-200 p-4 bg-white">
+            {/* Persona Input */}
+            <div className="mb-3">
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={persona}
+                  onChange={handlePersonaChange}
+                  placeholder="Set AI persona (e.g., financial analyst, teacher, researcher)..."
+                  className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                />
+              </div>
+            </div>
+
+            {/* Chat Input */}
             <form onSubmit={handleSubmit} className="flex space-x-2">
               <input
                 type="text"
