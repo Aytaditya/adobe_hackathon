@@ -5,6 +5,7 @@ import tempfile
 import os
 import re
 import logging
+import json
 from pydantic import BaseModel, Field
 import uuid
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,8 +25,8 @@ logger = logging.getLogger(__name__)
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title="Intelligent RAG API",
-    description="An advanced RAG system that provides summaries during analysis and filters results for higher relevance in chat.",
-    version="6.0.0"
+    description="An advanced RAG system that filters and re-ranks results for higher relevance.",
+    version="5.0.0"
 )
 
 app.add_middleware(
@@ -37,8 +38,6 @@ app.add_middleware(
 )
 
 # --- Pydantic Models ---
-
-# Models for Chat Endpoint
 class ExtractedSection(BaseModel):
     document: str
     section_title: str
@@ -54,12 +53,10 @@ class StructuredChatResponse(BaseModel):
     extracted_sections: List[ExtractedSection]
     subsection_analysis: List[SubsectionAnalysis]
 
-# **UPDATED** Model for Analysis Endpoint
 class PDFAnalysisResult(BaseModel):
     filename: str
     status: str
-    summary: str
-    headings: List[str]
+    extracted_headings_count: int
 
 class AnalysisResponse(BaseModel):
     analysis_id: str
@@ -82,10 +79,8 @@ class ProcessedChunk(BaseModel):
 pdf_data_stores = {}
 STOP_TITLES = {"introduction", "conclusion", "summary", "abstract", "table of contents", "preface", "references", "bibliography"}
 
-# --- Language Models and Embeddings ---
-# Separate LLM for JSON mode (chat) and standard mode (summarization)
-json_llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.0, model_kwargs={"response_format": {"type": "json_object"}})
-standard_llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.2)
+# --- Language Model and Embeddings ---
+llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.0, model_kwargs={"response_format": {"type": "json_object"}})
 embeddings = OpenAIEmbeddings()
 
 # --- Core Logic: PDFAnalyzer ---
@@ -99,43 +94,21 @@ class PDFAnalyzer:
             trimmed_line = line.strip()
             if 3 < len(trimmed_line) < 100 and (trimmed_line.isupper() or trimmed_line.istitle()):
                 headings.add(trimmed_line)
-        return sorted(list(headings))
-
-    async def generate_summary(self, text: str) -> str:
-        """ **NEW** function to generate a concise summary of a document."""
-        prompt = ChatPromptTemplate.from_template(
-            "Provide a concise, 2-3 sentence summary of the following document content:\n\n{document_text}"
-        )
-        chain = prompt | standard_llm
-        try:
-            # Use the first 4000 chars for a quick summary
-            summary_result = await chain.ainvoke({"document_text": text[:4000]})
-            return summary_result.content
-        except Exception as e:
-            logger.error(f"Could not generate summary: {e}")
-            return "Summary could not be generated."
-
+        return list(headings)
 
     async def process_pdf(self, file_path: str, filename: str) -> Optional[Dict[str, Any]]:
-        """ **UPDATED** to include summarization."""
         try:
             loader = PyPDFLoader(file_path)
             documents = await asyncio.to_thread(loader.load)
             if not documents: return None
 
             full_text = "\n".join([doc.page_content for doc in documents])
-            
-            # **NEW**: Generate summary and extract headings concurrently
-            summary_task = self.generate_summary(full_text)
             headings = self.extract_headings(full_text)
-            summary = await summary_task
-
             for doc in documents: doc.metadata["source"] = filename
             
             chunks = self.text_splitter.split_documents(documents)
             vector_store = await asyncio.to_thread(FAISS.from_documents, chunks, embeddings)
-
-            return {"vector_store": vector_store, "headings": headings, "summary": summary}
+            return {"vector_store": vector_store, "headings": headings}
         except Exception as e:
             logger.error(f"Error processing PDF {file_path}: {e}")
             return None
@@ -145,41 +118,30 @@ analyzer = PDFAnalyzer()
 
 @app.post("/analyze-pdfs/", response_model=AnalysisResponse)
 async def analyze_pdfs_endpoint(files: List[UploadFile] = File(...)):
-    """ **UPDATED** to return summary and headings."""
+    # ... (This endpoint remains the same as version 4.0.0)
     if not files:
         raise HTTPException(status_code=400, detail="No PDF files provided.")
 
     analysis_id = str(uuid.uuid4())
     processed_files = []
 
-    async def process_single_file(file: UploadFile, temp_dir: str):
-        if not file.filename.lower().endswith('.pdf'):
-            return None
-
-        temp_file_path = os.path.join(temp_dir, file.filename)
-        with open(temp_file_path, "wb") as f:
-            f.write(await file.read())
-        
-        processed_data = await analyzer.process_pdf(temp_file_path, file.filename)
-        if processed_data:
-            # Store necessary data for the chat endpoint
-            pdf_data_stores[file.filename] = {
-                "vector_store": processed_data["vector_store"],
-                "headings": processed_data["headings"]
-            }
-            # Prepare the rich result for the analysis response
-            return PDFAnalysisResult(
-                filename=file.filename,
-                status="Successfully processed and indexed.",
-                summary=processed_data["summary"],
-                headings=processed_data["headings"]
-            )
-        return None
-
     with tempfile.TemporaryDirectory() as temp_dir:
-        tasks = [process_single_file(file, temp_dir) for file in files]
-        results = await asyncio.gather(*tasks)
-        processed_files = [res for res in results if res is not None]
+        for file in files:
+            if not file.filename.lower().endswith('.pdf'):
+                continue
+
+            temp_file_path = os.path.join(temp_dir, file.filename)
+            with open(temp_file_path, "wb") as f:
+                f.write(await file.read())
+            
+            processed_data = await analyzer.process_pdf(temp_file_path, file.filename)
+            if processed_data:
+                pdf_data_stores[file.filename] = processed_data
+                processed_files.append(PDFAnalysisResult(
+                    filename=file.filename,
+                    status="Successfully processed and indexed.",
+                    extracted_headings_count=len(processed_data["headings"])
+                ))
 
     if not processed_files:
         raise HTTPException(status_code=500, detail="Could not process any of the provided PDF files.")
@@ -192,7 +154,6 @@ async def analyze_pdfs_endpoint(files: List[UploadFile] = File(...)):
 
 
 async def process_chunk(chunk: Document, query: str, persona: str, available_headings: List[str]) -> Optional[ProcessedChunk]:
-    # This function remains unchanged from version 5.0.0
     prompt = ChatPromptTemplate.from_template("""
     You are a '{persona}'. Your task is to analyze a text chunk for its relevance to a user's query.
     
@@ -215,7 +176,7 @@ async def process_chunk(chunk: Document, query: str, persona: str, available_hea
     """)
     
     try:
-        chain = prompt | json_llm | JsonOutputParser(pydantic_object=ProcessedChunk)
+        chain = prompt | llm | JsonOutputParser(pydantic_object=ProcessedChunk)
         result_dict = await chain.ainvoke({
             "persona": persona,
             "query": query,
@@ -223,6 +184,7 @@ async def process_chunk(chunk: Document, query: str, persona: str, available_hea
             "page_number": chunk.metadata.get("page", "N/A"),
             "headings": "\\n- ".join(available_headings)
         })
+        # Add metadata not included by the LLM
         result_dict['document'] = chunk.metadata.get('source', 'Unknown')
         result_dict['page_number'] = chunk.metadata.get('page', 0) + 1
         return ProcessedChunk(**result_dict)
@@ -233,10 +195,10 @@ async def process_chunk(chunk: Document, query: str, persona: str, available_hea
 
 @app.post("/chat/", response_model=StructuredChatResponse)
 async def chat_with_pdfs(request: ChatRequest):
-    # This endpoint remains unchanged from version 5.0.0
     if not pdf_data_stores:
         raise HTTPException(status_code=400, detail="No PDFs analyzed. Upload documents via /analyze-pdfs/ first.")
 
+    # 1. Retrieve relevant documents from all stores
     retrieval_tasks = []
     for filename, data in pdf_data_stores.items():
         retriever = data["vector_store"].as_retriever(search_kwargs={'k': 5})
@@ -250,6 +212,7 @@ async def chat_with_pdfs(request: ChatRequest):
 
     unique_docs = {doc.page_content: doc for doc in all_relevant_docs}.values()
 
+    # 2. Process each unique document chunk concurrently for scoring and extraction
     processing_tasks = []
     for doc in unique_docs:
         source_file = doc.metadata.get("source")
@@ -259,20 +222,24 @@ async def chat_with_pdfs(request: ChatRequest):
     
     processed_results = await asyncio.gather(*processing_tasks)
 
+    # 3. Filter and re-rank the results
     valid_results = [res for res in processed_results if res is not None]
     
+    # Filter out common "junk" titles and low-relevance scores
     filtered_results = [
         res for res in valid_results 
         if res.section_title.lower().strip() not in STOP_TITLES and res.relevance_score > 0.4
     ]
     
+    # Sort by the new relevance score
     sorted_results = sorted(filtered_results, key=lambda x: x.relevance_score, reverse=True)
 
     if not sorted_results:
         raise HTTPException(status_code=404, detail="Found some initial matches, but none were relevant enough after filtering.")
 
+    # 4. Assemble the final structured response from the top results
     extracted_sections, subsection_analysis = [], []
-    for rank, result in enumerate(sorted_results[:7], 1):
+    for rank, result in enumerate(sorted_results[:7], 1): # Take top 7
         extracted_sections.append(ExtractedSection(
             document=result.document,
             section_title=result.section_title,
